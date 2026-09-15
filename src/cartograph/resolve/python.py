@@ -178,6 +178,10 @@ def resolve_python_repo(root: Path) -> ResolutionResult:
     source_roots = detect_source_roots(root)
     for f in parsed:
         f.module_name = _module_name_for(Path(f.path), source_roots)
+        # Store a repo-relative path — an absolute path only makes sense
+        # inside the ephemeral clone dir it came from, and leaks local
+        # filesystem detail (e.g. into committed demo reports).
+        f.path = Path(f.path).relative_to(root).as_posix()
 
     module_to_path = {f.module_name: f.path for f in parsed}
     files_by_module = {f.module_name: f for f in parsed}

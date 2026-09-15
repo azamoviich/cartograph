@@ -265,4 +265,12 @@ def resolve_javascript_repo(root: Path) -> ResolutionResult:
                     continue
             edges.append(ResolvedEdge(module, _external_package_name(specifier), EdgeKind.EXTERNAL, raw=specifier))
 
+    # Convert to repo-relative paths only now — every resolution step
+    # above needs absolute filesystem paths to join against a specifier's
+    # directory. An absolute path only makes sense inside the ephemeral
+    # clone dir it came from, and leaks local filesystem detail (e.g.
+    # into committed demo reports).
+    for f in parsed:
+        f.path = Path(f.path).relative_to(root).as_posix()
+
     return ResolutionResult(files=parsed, edges=edges)

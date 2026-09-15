@@ -1,0 +1,296 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cartograph</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+  :root {
+    --bg: #fafaf9; --panel: #ffffff; --text: #1c1c1c; --muted: #6b6b6b;
+    --border: #e2e2e0; --accent: #2563eb; --edge: #c7c7c5;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14140f; --panel: #1c1c17; --text: #ececec; --muted: #9a9a94;
+      --border: #333; --accent: #60a5fa; --edge: #3a3a35;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14140f; --panel: #1c1c17; --text: #ececec; --muted: #9a9a94;
+    --border: #333; --accent: #60a5fa; --edge: #3a3a35;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+  #app { display: none; height: 100vh; width: 100vw; }
+  #graph-wrap { flex: 1; min-width: 0; position: relative; }
+  svg { width: 100%; height: 100%; display: block; }
+  #sidebar {
+    width: 320px; max-width: 45vw; border-left: 1px solid var(--border);
+    background: var(--panel); padding: 16px; overflow-y: auto; flex-shrink: 0;
+  }
+  #header {
+    position: absolute; top: 12px; left: 12px; background: var(--panel);
+    border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px;
+    max-width: min(60vw, 480px);
+  }
+  #header h1 { font-size: 15px; margin: 0 0 4px; }
+  #header p { margin: 0; color: var(--muted); font-size: 12px; }
+  #overview { margin-top: 8px; font-size: 12px; max-width: 440px; }
+  #overview p { margin: 0 0 6px; color: var(--text); }
+  .confidence { font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); }
+  .node circle { stroke: var(--panel); stroke-width: 1.5px; cursor: pointer; }
+  .node text { font-size: 9px; fill: var(--muted); pointer-events: none; }
+  .link { stroke: var(--edge); stroke-opacity: 0.6; }
+  .link.dim { stroke-opacity: 0.08; }
+  .node.dim circle { opacity: 0.15; }
+  .node.dim text { opacity: 0.15; }
+  h2 { font-size: 14px; margin: 0 0 4px; word-break: break-word; }
+  .path { color: var(--muted); font-size: 11px; margin-bottom: 12px; word-break: break-all; }
+  .section { margin-bottom: 14px; }
+  .section h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 6px; }
+  .chip { display: inline-block; background: var(--bg); border: 1px solid var(--border); border-radius: 5px; padding: 2px 6px; margin: 0 4px 4px 0; font-size: 11px; }
+  .empty { color: var(--muted); font-size: 12px; }
+  .placeholder { color: var(--muted); padding-top: 40px; text-align: center; }
+  #search { width: 100%; padding: 6px 8px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; }
+  #loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<div id="loading">Loading report&hellip;</div>
+<div id="app">
+  <div id="graph-wrap">
+    <div id="header">
+      <h1 id="report-title">Cartograph</h1>
+      <p id="report-stats"></p>
+      <div id="overview"></div>
+    </div>
+    <svg></svg>
+  </div>
+  <div id="sidebar">
+    <input id="search" type="text" placeholder="Filter modules...">
+    <div id="detail"><div class="placeholder">Click a node to inspect it</div></div>
+    <div id="risk-panel"></div>
+  </div>
+</div>
+
+<script>
+function renderReport(report, title) {
+  document.getElementById('loading').setAttribute('hidden', '');
+  document.getElementById('app').style.display = 'flex';
+  document.title = title || 'Cartograph';
+  document.getElementById('report-title').textContent = title || 'Cartograph';
+
+  var summary = report.summary;
+  document.getElementById('report-stats').textContent =
+    summary.file_count + ' files \u00b7 ' + summary.internal_edge_count + ' internal imports \u00b7 ' +
+    (summary.unresolved_ratio * 100).toFixed(1) + '% unresolved';
+
+  var nodesById = {};
+  report.nodes.forEach(function(n) { nodesById[n.module] = n; });
+
+  function topDir(path) {
+    var parts = path.split('/').filter(Boolean);
+    return parts.length > 1 ? parts[0] : '(root)';
+  }
+
+  var groupKey = function(n) { return n.cluster || topDir(n.path); };
+  var groups = Array.from(new Set(report.nodes.map(groupKey)));
+  var color = d3.scaleOrdinal(d3.schemeTableau10).domain(groups);
+
+  var nodes = report.nodes.map(function(n) {
+    return { id: n.module, path: n.path, loc: n.loc, symbols: n.symbols,
+              external_deps: n.external_deps, unresolved: n.unresolved,
+              dir: groupKey(n) };
+  });
+  var links = report.edges.map(function(e) { return { source: e.src, target: e.dst }; });
+
+  var indegree = {};
+  links.forEach(function(l) { indegree[l.target] = (indegree[l.target] || 0) + 1; });
+
+  var svg = d3.select('svg');
+  var g = svg.append('g');
+  svg.call(d3.zoom().scaleExtent([0.1, 6]).on('zoom', function(ev) { g.attr('transform', ev.transform); }));
+
+  var width = window.innerWidth, height = window.innerHeight;
+
+  var sim = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(links).id(function(d) { return d.id; }).distance(60).strength(0.3))
+    .force('charge', d3.forceManyBody().strength(-120))
+    .force('center', d3.forceCenter(width / 2, height / 2))
+    .force('collide', d3.forceCollide(function(d) { return radius(d) + 3; }));
+
+  function radius(d) { return 4 + Math.min(10, Math.sqrt(indegree[d.id] || 0) * 3); }
+
+  var link = g.append('g').selectAll('line')
+    .data(links).join('line').attr('class', 'link');
+
+  var node = g.append('g').selectAll('g')
+    .data(nodes).join('g').attr('class', 'node')
+    .call(d3.drag()
+      .on('start', function(ev, d) { if (!ev.active) sim.alphaTarget(0.2).restart(); d.fx = d.x; d.fy = d.y; })
+      .on('drag', function(ev, d) { d.fx = ev.x; d.fy = ev.y; })
+      .on('end', function(ev, d) { if (!ev.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }));
+
+  node.append('circle')
+    .attr('r', radius)
+    .attr('fill', function(d) { return color(d.dir); })
+    .on('click', function(ev, d) { selectNode(d.id); });
+
+  node.append('text')
+    .attr('dx', function(d) { return radius(d) + 3; })
+    .attr('dy', '0.32em')
+    .text(function(d) { return d.id.split('.').pop(); });
+
+  sim.on('tick', function() {
+    link.attr('x1', function(d) { return d.source.x; }).attr('y1', function(d) { return d.source.y; })
+        .attr('x2', function(d) { return d.target.x; }).attr('y2', function(d) { return d.target.y; });
+    node.attr('transform', function(d) { return 'translate(' + d.x + ',' + d.y + ')'; });
+  });
+
+  var adjacency = {};
+  links.forEach(function(l) {
+    var s = l.source.id || l.source, t = l.target.id || l.target;
+    (adjacency[s] = adjacency[s] || new Set()).add(t);
+    (adjacency[t] = adjacency[t] || new Set()).add(s);
+  });
+
+  function selectNode(id) {
+    var neighbors = adjacency[id] || new Set();
+    node.classed('dim', function(d) { return d.id !== id && !neighbors.has(d.id); });
+    link.classed('dim', function(d) {
+      var s = d.source.id || d.source, t = d.target.id || d.target;
+      return s !== id && t !== id;
+    });
+    renderDetail(nodesById[id]);
+  }
+
+  function renderDetail(n) {
+    var el = document.getElementById('detail');
+    if (!n) { el.innerHTML = '<div class="placeholder">Click a node to inspect it</div>'; return; }
+    function chips(list) {
+      if (!list || !list.length) return '<div class="empty">none</div>';
+      return list.map(function(x) { return '<span class="chip">' + escapeHtml(x) + '</span>'; }).join('');
+    }
+
+    var narrationHtml = '';
+    var clusterNarration = report.narration && report.narration.clusters
+      ? report.narration.clusters[n.cluster] : null;
+    if (clusterNarration) {
+      function deps(list) {
+        if (!list || !list.length) return '<div class="empty">none</div>';
+        return '<ul style="padding-left:16px;margin:0;">' + list.map(function(d) {
+          return '<li>' + escapeHtml(d.target_cluster) + ' &mdash; ' + escapeHtml(d.reason) + '</li>';
+        }).join('') + '</ul>';
+      }
+      narrationHtml =
+        '<div class="section"><h3>Subsystem role <span class="confidence">(' + escapeHtml(clusterNarration.confidence) + ' confidence)</span></h3>' +
+        '<p>' + escapeHtml(clusterNarration.role) + '</p></div>' +
+        '<div class="section"><h3>Depends on</h3>' + deps(clusterNarration.depends_on) + '</div>' +
+        '<div class="section"><h3>Provides to</h3>' + deps(clusterNarration.provides_to) + '</div>';
+    }
+
+    el.innerHTML =
+      '<h2>' + escapeHtml(n.module) + '</h2>' +
+      '<div class="path">' + escapeHtml(n.path) + '</div>' +
+      (n.cluster ? '<div class="path">cluster: ' + escapeHtml(n.cluster) + '</div>' : '') +
+      narrationHtml +
+      '<div class="section"><h3>Symbols (' + n.symbols.length + ')</h3>' + chips(n.symbols) + '</div>' +
+      '<div class="section"><h3>External deps</h3>' + chips(n.external_deps) + '</div>' +
+      '<div class="section"><h3>Unresolved imports</h3>' + chips(n.unresolved) + '</div>' +
+      '<div class="section"><h3>Lines of code</h3>' + n.loc + '</div>';
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function(c) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  function renderRiskPanel() {
+    var risk = report.risk;
+    var el = document.getElementById('risk-panel');
+    if (!risk) { el.innerHTML = ''; return; }
+
+    function list(items, render) {
+      if (!items || !items.length) return '<div class="empty">none found</div>';
+      return '<ul style="padding-left:16px;margin:0;">' + items.map(function(it) {
+        return '<li style="margin-bottom:4px;cursor:pointer;" data-module="' + escapeHtml(it.module || '') + '">' + render(it) + '</li>';
+      }).join('') + '</ul>';
+    }
+
+    el.innerHTML =
+      '<div class="section"><h3>God files</h3>' +
+      list(risk.god_files.slice(0, 8), function(f) { return escapeHtml(f.module) + ' <span class="empty">(' + f.loc + ' loc, in-degree ' + f.in_degree + ')</span>'; }) +
+      '</div>' +
+      '<div class="section"><h3>Cycles</h3><div class="empty">' + risk.cycles.scc_count + ' strongly-connected component(s), ' + risk.cycles.cycles.length + ' cycle(s) enumerated</div></div>' +
+      '<div class="section"><h3>Stable-dependency violations</h3>' +
+      list(risk.sdp_violations.slice(0, 8), function(v) { return escapeHtml(v.src) + ' &rarr; ' + escapeHtml(v.dst); }) +
+      '</div>' +
+      '<div class="section"><h3>Untested hot paths</h3>' +
+      list(risk.untested_hot_paths.slice(0, 8), function(f) { return escapeHtml(f.module) + ' <span class="empty">(in-degree ' + f.in_degree + ')</span>'; }) +
+      '</div>';
+
+    el.querySelectorAll('[data-module]').forEach(function(li) {
+      li.addEventListener('click', function() {
+        var id = li.getAttribute('data-module');
+        if (id && nodesById[id]) selectNode(id);
+      });
+    });
+  }
+  renderRiskPanel();
+
+  function renderOverview() {
+    var overview = report.narration && report.narration.overview;
+    var el = document.getElementById('overview');
+    if (!overview) { el.innerHTML = ''; return; }
+    el.innerHTML =
+      '<p>' + escapeHtml(overview.summary) + '</p>' +
+      (overview.key_subsystems && overview.key_subsystems.length
+        ? '<p><strong>Key subsystems:</strong> ' + overview.key_subsystems.map(escapeHtml).join(', ') + '</p>'
+        : '') +
+      (overview.notable_risks && overview.notable_risks.length
+        ? '<p><strong>Notable risks:</strong> ' + overview.notable_risks.map(escapeHtml).join('; ') + '</p>'
+        : '');
+  }
+  renderOverview();
+
+  document.getElementById('search').addEventListener('input', function(ev) {
+    var q = ev.target.value.trim().toLowerCase();
+    if (!q) { node.classed('dim', false); link.classed('dim', false); return; }
+    node.classed('dim', function(d) { return d.id.toLowerCase().indexOf(q) === -1; });
+    link.classed('dim', true);
+  });
+
+  window.addEventListener('resize', function() {
+    sim.force('center', d3.forceCenter(window.innerWidth / 2, window.innerHeight / 2));
+    sim.alpha(0.3).restart();
+  });
+}
+
+(function() {{
+  var params = new URLSearchParams(location.search);
+  var reportUrl = params.get('report');
+  var title = params.get('title') || (reportUrl ? reportUrl.split('/').pop().replace(/\.json$/, '') : 'Cartograph');
+  if (!reportUrl) {{
+    document.getElementById('loading').textContent = 'No ?report= query param given.';
+    return;
+  }}
+  fetch(reportUrl)
+    .then(function(r) {{
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }})
+    .then(function(report) {{ renderReport(report, title); }})
+    .catch(function(err) {{
+      document.getElementById('loading').textContent = 'Failed to load report: ' + err.message;
+    }});
+}})();
+
+</script>
+</body>
+</html>

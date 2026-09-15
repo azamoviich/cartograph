@@ -1,0 +1,84 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cartograph — auto-generated architecture docs</title>
+<style>
+  :root {
+    --bg: #fafaf9; --panel: #ffffff; --text: #1c1c1c; --muted: #6b6b6b;
+    --border: #e2e2e0; --accent: #2563eb;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14140f; --panel: #1c1c17; --text: #ececec; --muted: #9a9a94;
+      --border: #333; --accent: #60a5fa;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14140f; --panel: #1c1c17; --text: #ececec; --muted: #9a9a94;
+    --border: #333; --accent: #60a5fa;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    padding: 48px 20px;
+  }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+  main { max-width: 780px; margin: 0 auto; }
+  h1 { font-size: 28px; margin: 0 0 8px; }
+  .lede { color: var(--muted); font-size: 16px; line-height: 1.5; margin: 0 0 32px; max-width: 620px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  a.card {
+    display: block; border: 1px solid var(--border); border-radius: 10px; padding: 16px;
+    text-decoration: none; color: inherit; background: var(--panel); transition: border-color 0.15s;
+  }
+  a.card:hover { border-color: var(--accent); }
+  .card h2 { font-size: 15px; margin: 0 0 8px; word-break: break-word; }
+  .card p { margin: 2px 0; color: var(--muted); font-size: 12px; }
+  footer { margin-top: 40px; color: var(--muted); font-size: 13px; }
+  footer a { color: var(--accent); }
+  code { background: var(--border); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Cartograph</h1>
+  <p class="lede">
+    Point it at any repo, get an auto-generated architecture explanation: an interactive
+    dependency diagram, subsystem clustering, and a risk map (god files, circular
+    dependencies, ownership concentration, layering violations). These reports are
+    pre-generated so you can explore them with no setup.
+  </p>
+  <div class="cards" id="cards"></div>
+  <footer>
+    Want to run it on your own repo? <code>uv run cartograph analyze &lt;github-url&gt; --html out.html</code>
+    &mdash; <a href="https://github.com/azamoviich/cartograph">source on GitHub</a>
+  </footer>
+</main>
+<script>
+fetch('reports/index.json')
+  .then(function(r) { return r.json(); })
+  .then(function(repos) {
+    var cards = document.getElementById('cards');
+    repos.forEach(function(repo) {
+      var a = document.createElement('a');
+      a.className = 'card';
+      a.href = 'viewer.html?report=reports/' + repo.slug + '.json&title=' + encodeURIComponent(repo.title);
+      a.innerHTML =
+        '<h2>' + repo.title + '</h2>' +
+        '<p>' + repo.file_count + ' files &middot; ' + repo.cluster_count + ' clusters</p>' +
+        '<p>' + (repo.unresolved_ratio * 100).toFixed(1) + '% unresolved imports</p>';
+      cards.appendChild(a);
+    });
+  })
+  .catch(function(err) {
+    document.getElementById('cards').textContent = 'Failed to load report index: ' + err.message;
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,34 @@
+[
+  {
+    "slug": "pallets-flask",
+    "title": "pallets/flask",
+    "url": "https://github.com/pallets/flask",
+    "file_count": 83,
+    "cluster_count": 43,
+    "unresolved_ratio": 0.0
+  },
+  {
+    "slug": "tiangolo-fastapi",
+    "title": "tiangolo/fastapi",
+    "url": "https://github.com/tiangolo/fastapi",
+    "file_count": 1138,
+    "cluster_count": 810,
+    "unresolved_ratio": 0.0
+  },
+  {
+    "slug": "expressjs-express",
+    "title": "expressjs/express",
+    "url": "https://github.com/expressjs/express",
+    "file_count": 141,
+    "cluster_count": 68,
+    "unresolved_ratio": 0.0074
+  },
+  {
+    "slug": "colinhacks-zod",
+    "title": "colinhacks/zod",
+    "url": "https://github.com/colinhacks/zod",
+    "file_count": 518,
+    "cluster_count": 290,
+    "unresolved_ratio": 0.0021
+  }
+]

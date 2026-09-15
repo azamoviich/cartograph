@@ -1,10 +1,13 @@
-"""Milestone-2 output: a self-contained, static force-directed HTML diagram.
+"""Interactive force-directed HTML diagram: force graph + clusters + risk + narration.
 
-No clustering and no LLM yet — nodes are colored by top-level directory
-(a free proxy for subsystem before real clustering lands in milestone 3)
-and edges are the resolved internal import graph from milestone 1.
-Clicking a node highlights its neighbors and shows its facts (path, LOC,
-symbols, external deps, unresolved imports) in a side panel.
+Two render modes share one template and one JS renderer:
+- `build_html_report`: embeds the report JSON inline — a single
+  self-contained file, what `cartograph analyze --html` writes.
+- `build_static_viewer`: no embedded data — fetches a report JSON named
+  by a `?report=` query param at load time. This is what milestone 6's
+  demo page uses: one shared viewer reads any of the ~10 pre-generated
+  committed reports, instead of duplicating ~50KB of D3 boilerplate
+  per repo.
 """
 
 from __future__ import annotations
@@ -16,7 +19,7 @@ _TEMPLATE = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>{title}</title>
+<title>Cartograph</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 <style>
   :root {{
@@ -39,7 +42,7 @@ _TEMPLATE = """<!doctype html>
   body {{ margin: 0; background: var(--bg); color: var(--text); font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
   img {{ max-width: 100%; }}
   [hidden] {{ display: none !important; }}
-  #app {{ display: flex; height: 100vh; width: 100vw; }}
+  #app {{ display: none; height: 100vh; width: 100vw; }}
   #graph-wrap {{ flex: 1; min-width: 0; position: relative; }}
   svg {{ width: 100%; height: 100%; display: block; }}
   #sidebar {{
@@ -70,14 +73,16 @@ _TEMPLATE = """<!doctype html>
   .empty {{ color: var(--muted); font-size: 12px; }}
   .placeholder {{ color: var(--muted); padding-top: 40px; text-align: center; }}
   #search {{ width: 100%; padding: 6px 8px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; }}
+  #loading {{ position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); }}
 </style>
 </head>
 <body>
+<div id="loading">Loading report&hellip;</div>
 <div id="app">
   <div id="graph-wrap">
     <div id="header">
-      <h1>{title}</h1>
-      <p>{file_count} files &middot; {edge_count} internal imports &middot; {unresolved_pct} unresolved</p>
+      <h1 id="report-title">Cartograph</h1>
+      <p id="report-stats"></p>
       <div id="overview"></div>
     </div>
     <svg></svg>
@@ -88,10 +93,19 @@ _TEMPLATE = """<!doctype html>
     <div id="risk-panel"></div>
   </div>
 </div>
-<script id="report-data" type="application/json">{data_json}</script>
+{data_source}
 <script>
-(function() {{
-  var report = JSON.parse(document.getElementById('report-data').textContent);
+function renderReport(report, title) {{
+  document.getElementById('loading').setAttribute('hidden', '');
+  document.getElementById('app').style.display = 'flex';
+  document.title = title || 'Cartograph';
+  document.getElementById('report-title').textContent = title || 'Cartograph';
+
+  var summary = report.summary;
+  document.getElementById('report-stats').textContent =
+    summary.file_count + ' files \\u00b7 ' + summary.internal_edge_count + ' internal imports \\u00b7 ' +
+    (summary.unresolved_ratio * 100).toFixed(1) + '% unresolved';
+
   var nodesById = {{}};
   report.nodes.forEach(function(n) {{ nodesById[n.module] = n; }});
 
@@ -272,23 +286,57 @@ _TEMPLATE = """<!doctype html>
     sim.force('center', d3.forceCenter(window.innerWidth / 2, window.innerHeight / 2));
     sim.alpha(0.3).restart();
   }});
-}})();
+}}
+{bootstrap}
 </script>
 </body>
 </html>
 """
 
+_EMBEDDED_BOOTSTRAP = """
+(function() {{
+  var report = JSON.parse(document.getElementById('report-data').textContent);
+  renderReport(report, {title_json});
+}})();
+"""
+
+_FETCH_BOOTSTRAP = """
+(function() {{
+  var params = new URLSearchParams(location.search);
+  var reportUrl = params.get('report');
+  var title = params.get('title') || (reportUrl ? reportUrl.split('/').pop().replace(/\\.json$/, '') : 'Cartograph');
+  if (!reportUrl) {{
+    document.getElementById('loading').textContent = 'No ?report= query param given.';
+    return;
+  }}
+  fetch(reportUrl)
+    .then(function(r) {{
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }})
+    .then(function(report) {{ renderReport(report, title); }})
+    .catch(function(err) {{
+      document.getElementById('loading').textContent = 'Failed to load report: ' + err.message;
+    }});
+}})();
+"""
+
 
 def build_html_report(report: dict, title: str = "Cartograph") -> str:
-    summary = report["summary"]
-    unresolved_pct = f"{summary['unresolved_ratio']:.1%}"
+    """A single self-contained HTML file with the report JSON embedded inline."""
     # Prevent a path/symbol string containing "</script>" from breaking out
     # of the embedded JSON script tag.
     data_json = json.dumps(report).replace("</", "<\\/")
-    return _TEMPLATE.format(
-        title=title,
-        file_count=summary["file_count"],
-        edge_count=summary["internal_edge_count"],
-        unresolved_pct=unresolved_pct,
-        data_json=data_json,
-    )
+    data_source = f'<script id="report-data" type="application/json">{data_json}</script>'
+    bootstrap = _EMBEDDED_BOOTSTRAP.format(title_json=json.dumps(title))
+    return _TEMPLATE.format(data_source=data_source, bootstrap=bootstrap)
+
+
+def build_static_viewer() -> str:
+    """A single shared page that fetches `?report=<url>&title=<name>` at load time.
+
+    No embedded data — this is what milestone 6's demo page links to for
+    each pre-generated repo report, so the ~50KB of D3/CSS/JS is written
+    once, not duplicated per repo.
+    """
+    return _TEMPLATE.format(data_source="", bootstrap=_FETCH_BOOTSTRAP)
