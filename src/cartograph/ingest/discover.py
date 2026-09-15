@@ -57,3 +57,23 @@ def discover_python_files(
         for p in root.rglob("*.py")
         if not _is_ignored(p, root, ignore_dirs, ignore_globs)
     )
+
+
+JS_EXTENSIONS = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx")
+
+
+def discover_js_files(
+    root: Path,
+    ignore_dirs: set[str] | None = None,
+    ignore_globs: set[str] | None = None,
+) -> list[Path]:
+    ignore_dirs = ignore_dirs if ignore_dirs is not None else DEFAULT_IGNORE_DIRS
+    ignore_globs = ignore_globs if ignore_globs is not None else DEFAULT_IGNORE_GLOBS
+
+    return sorted(
+        p
+        for p in root.rglob("*")
+        if p.suffix in JS_EXTENSIONS
+        and not p.name.endswith(".d.ts")
+        and not _is_ignored(p, root, ignore_dirs, ignore_globs)
+    )

@@ -9,15 +9,29 @@ resolve stage.
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 
 import networkx as nx
+
+# Python module names are dotted ("pkg.sub.mod"); JS/TS module names are
+# POSIX paths ("src/sub/mod"). Splitting on "." alone silently treats
+# every JS module as a single, unsplittable path segment — every module
+# becomes its own seed cluster, defeating directory-prior clustering
+# entirely. Split on either separator so this works for both languages.
+_SEPARATOR = re.compile(r"[./]")
+
+
+def _split(module_name: str) -> list[str]:
+    if module_name in (".", ""):
+        return ["<root>"]
+    return [p for p in _SEPARATOR.split(module_name) if p]
 
 
 def _group_by_depth(nodes: list[str], depth: int) -> dict[str, list[str]]:
     groups: dict[str, list[str]] = defaultdict(list)
     for n in nodes:
-        parts = n.split(".")
+        parts = _split(n)
         key = ".".join(parts[:depth]) if len(parts) > depth else n
         groups[key].append(n)
     return groups

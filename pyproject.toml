@@ -16,6 +16,7 @@ dependencies = [
     "click>=8.1",
     "pydantic>=2.9",
     "anthropic>=0.40",
+    "json5>=0.15.0",
 ]
 
 [project.optional-dependencies]

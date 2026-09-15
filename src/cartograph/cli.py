@@ -10,11 +10,24 @@ import click
 from cartograph.cluster.hybrid import build_cluster_level_graph, cluster_graph
 from cartograph.graph.build import build_module_graph
 from cartograph.ingest.clone import clone_repo, repo_slug
+from cartograph.ingest.discover import discover_js_files, discover_python_files
 from cartograph.narrate.cache import DiskCache
 from cartograph.report.emit import build_report
 from cartograph.report.html import build_html_report
+from cartograph.resolve.javascript import resolve_javascript_repo
 from cartograph.resolve.python import resolve_python_repo
 from cartograph.risk.build import build_risk_map
+
+
+def _detect_language(repo_root: Path) -> str:
+    """Pick the resolver by file count. A repo with both is analyzed as
+    whichever language dominates — merging both graphs is out of MVP
+    scope, the same kind of bounded limitation as Python's package-dir
+    remapping or JS's package.json `exports` maps.
+    """
+    py_count = len(discover_python_files(repo_root))
+    js_count = len(discover_js_files(repo_root))
+    return "javascript" if js_count > py_count else "python"
 
 
 @click.group()
@@ -27,6 +40,8 @@ def main() -> None:
 @click.option("-o", "--output", type=click.Path(path_type=Path), default=None)
 @click.option("--html", "html_output", type=click.Path(path_type=Path), default=None,
               help="Also write a self-contained interactive HTML diagram.")
+@click.option("--lang", type=click.Choice(["auto", "python", "javascript"]), default="auto",
+              help="Force the language resolver instead of auto-detecting by file count.")
 @click.option("--narrate", is_flag=True, default=False,
               help="Add LLM-written subsystem prose. Requires ANTHROPIC_API_KEY (BYO key).")
 @click.option("--api-key", default=None, help="Anthropic API key, overrides ANTHROPIC_API_KEY.")
@@ -36,6 +51,7 @@ def analyze(
     source: str,
     output: Path | None,
     html_output: Path | None,
+    lang: str,
     narrate: bool,
     api_key: str | None,
     narrate_cache: Path,
@@ -49,7 +65,11 @@ def analyze(
         else:
             repo_root = Path(source).resolve()
 
-        result = resolve_python_repo(repo_root)
+        resolved_lang = _detect_language(repo_root) if lang == "auto" else lang
+        resolver = resolve_javascript_repo if resolved_lang == "javascript" else resolve_python_repo
+        click.echo(f"language={resolved_lang}", err=True)
+
+        result = resolver(repo_root)
         graph = build_module_graph(result)
         assignment = cluster_graph(graph)
         cluster_level_graph = build_cluster_level_graph(graph, assignment)

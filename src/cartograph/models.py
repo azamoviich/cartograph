@@ -23,6 +23,8 @@ class RawImport:
     line: int = 0
     is_star: bool = False
     type_checking: bool = False  # guarded by `if TYPE_CHECKING:` — excluded from cycle detection
+    is_export_forward: bool = False  # JS/TS `export ... from 'x'` — barrel forwarding, like __init__.py
+    is_dynamic_unresolved: bool = False  # JS/TS import()/require() with a non-literal specifier
 
 
 @dataclass
