@@ -22,6 +22,7 @@ class RawImport:
     level: int = 0  # relative-import dot count; 0 = absolute
     line: int = 0
     is_star: bool = False
+    type_checking: bool = False  # guarded by `if TYPE_CHECKING:` — excluded from cycle detection
 
 
 @dataclass
@@ -48,6 +49,7 @@ class ResolvedEdge:
     dst: str  # module_name of imported file, or the raw external/unresolved name
     kind: EdgeKind
     raw: str = ""  # original import string, kept for debugging
+    type_checking: bool = False  # forwarded from RawImport; excluded from cycle detection
 
 
 @dataclass

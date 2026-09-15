@@ -27,20 +27,24 @@ def _dotted_name(node, source: bytes) -> str:
     return _text(node, source).replace(" ", "")
 
 
-def _parse_import_statement(node, source: bytes) -> list[RawImport]:
+def _parse_import_statement(node, source: bytes, type_checking: bool) -> list[RawImport]:
     """`import a.b`, `import a.b as c`, `import a, b`"""
     imports = []
     for child in node.children:
         if child.type == "dotted_name":
-            imports.append(RawImport(module=_dotted_name(child, source)))
+            imports.append(RawImport(module=_dotted_name(child, source), type_checking=type_checking))
         elif child.type == "aliased_import":
             name_node = child.child_by_field_name("name")
             if name_node is not None:
-                imports.append(RawImport(module=_dotted_name(name_node, source)))
+                imports.append(
+                    RawImport(module=_dotted_name(name_node, source), type_checking=type_checking)
+                )
     return imports
 
 
-def _parse_import_from_statement(node, source: bytes, line: int) -> RawImport | None:
+def _parse_import_from_statement(
+    node, source: bytes, line: int, type_checking: bool
+) -> RawImport | None:
     """`from .a.b import c, d`, `from a.b import *`, `from ..a import b as c`"""
     level = 0
     module_parts: list[str] = []
@@ -90,6 +94,7 @@ def _parse_import_from_statement(node, source: bytes, line: int) -> RawImport | 
         level=level,
         line=line,
         is_star=is_star,
+        type_checking=type_checking,
     )
 
 
@@ -126,21 +131,28 @@ def parse_python_file(path: Path) -> ParsedFile:
 
     imports: list[RawImport] = []
 
-    def walk(node, depth: int) -> None:
-        # Only descend into module-level and function/class bodies enough to
-        # find imports; we don't need full-body traversal for MVP, but
-        # imports guarded by `if TYPE_CHECKING:` or nested in functions are
-        # still real edges, so we walk the whole tree.
+    def walk(node, type_checking: bool) -> None:
+        # We walk the whole tree (not just module level) since imports
+        # guarded by `if TYPE_CHECKING:` or nested in functions are still
+        # real edges — but TYPE_CHECKING-guarded ones are flagged so the
+        # risk stage can exclude them from cycle detection.
         if node.type == "import_statement":
-            imports.extend(_parse_import_statement(node, source))
+            imports.extend(_parse_import_statement(node, source, type_checking))
         elif node.type == "import_from_statement":
-            parsed = _parse_import_from_statement(node, source, node.start_point[0] + 1)
+            parsed = _parse_import_from_statement(node, source, node.start_point[0] + 1, type_checking)
             if parsed is not None:
                 imports.append(parsed)
+            return
+        elif node.type == "if_statement":
+            condition = node.child_by_field_name("condition")
+            guarded = condition is not None and "TYPE_CHECKING" in _text(condition, source)
+            for child in node.children:
+                walk(child, type_checking or guarded)
+            return
         for child in node.children:
-            walk(child, depth + 1)
+            walk(child, type_checking)
 
-    walk(root, 0)
+    walk(root, False)
 
     return ParsedFile(
         path=str(path),

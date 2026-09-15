@@ -81,6 +81,7 @@ _TEMPLATE = """<!doctype html>
   <div id="sidebar">
     <input id="search" type="text" placeholder="Filter modules...">
     <div id="detail"><div class="placeholder">Click a node to inspect it</div></div>
+    <div id="risk-panel"></div>
   </div>
 </div>
 <script id="report-data" type="application/json">{data_json}</script>
@@ -95,13 +96,14 @@ _TEMPLATE = """<!doctype html>
     return parts.length > 1 ? parts[0] : '(root)';
   }}
 
-  var dirs = Array.from(new Set(report.nodes.map(function(n) {{ return topDir(n.path); }})));
-  var color = d3.scaleOrdinal(d3.schemeTableau10).domain(dirs);
+  var groupKey = function(n) {{ return n.cluster || topDir(n.path); }};
+  var groups = Array.from(new Set(report.nodes.map(groupKey)));
+  var color = d3.scaleOrdinal(d3.schemeTableau10).domain(groups);
 
   var nodes = report.nodes.map(function(n) {{
     return {{ id: n.module, path: n.path, loc: n.loc, symbols: n.symbols,
               external_deps: n.external_deps, unresolved: n.unresolved,
-              dir: topDir(n.path) }};
+              dir: groupKey(n) }};
   }});
   var links = report.edges.map(function(e) {{ return {{ source: e.src, target: e.dst }}; }});
 
@@ -186,6 +188,39 @@ _TEMPLATE = """<!doctype html>
       return {{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[c];
     }});
   }}
+
+  function renderRiskPanel() {{
+    var risk = report.risk;
+    var el = document.getElementById('risk-panel');
+    if (!risk) {{ el.innerHTML = ''; return; }}
+
+    function list(items, render) {{
+      if (!items || !items.length) return '<div class="empty">none found</div>';
+      return '<ul style="padding-left:16px;margin:0;">' + items.map(function(it) {{
+        return '<li style="margin-bottom:4px;cursor:pointer;" data-module="' + escapeHtml(it.module || '') + '">' + render(it) + '</li>';
+      }}).join('') + '</ul>';
+    }}
+
+    el.innerHTML =
+      '<div class="section"><h3>God files</h3>' +
+      list(risk.god_files.slice(0, 8), function(f) {{ return escapeHtml(f.module) + ' <span class="empty">(' + f.loc + ' loc, in-degree ' + f.in_degree + ')</span>'; }}) +
+      '</div>' +
+      '<div class="section"><h3>Cycles</h3><div class="empty">' + risk.cycles.scc_count + ' strongly-connected component(s), ' + risk.cycles.cycles.length + ' cycle(s) enumerated</div></div>' +
+      '<div class="section"><h3>Stable-dependency violations</h3>' +
+      list(risk.sdp_violations.slice(0, 8), function(v) {{ return escapeHtml(v.src) + ' &rarr; ' + escapeHtml(v.dst); }}) +
+      '</div>' +
+      '<div class="section"><h3>Untested hot paths</h3>' +
+      list(risk.untested_hot_paths.slice(0, 8), function(f) {{ return escapeHtml(f.module) + ' <span class="empty">(in-degree ' + f.in_degree + ')</span>'; }}) +
+      '</div>';
+
+    el.querySelectorAll('[data-module]').forEach(function(li) {{
+      li.addEventListener('click', function() {{
+        var id = li.getAttribute('data-module');
+        if (id && nodesById[id]) selectNode(id);
+      }});
+    }});
+  }}
+  renderRiskPanel();
 
   document.getElementById('search').addEventListener('input', function(ev) {{
     var q = ev.target.value.trim().toLowerCase();

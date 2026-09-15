@@ -25,11 +25,16 @@ def detect_source_roots(root: Path) -> list[Path]:
     pyproject.toml package-dir remaps yet — documented MVP limitation,
     tracked as a source of resolution error alongside the unresolved %.
     """
+    # `root` is always included as a fallback root (lowest priority — the
+    # longest-prefix-match in _module_name_for picks src_dir for anything
+    # under it). Without this fallback, files outside src/ (example apps,
+    # scripts) fall back to a bare filename stem, which collides whenever
+    # two such files share a name — a real bug seen on flask's examples/.
     src_dir = root / "src"
     if src_dir.is_dir():
         candidates = [p for p in src_dir.iterdir() if p.is_dir() and (p / "__init__.py").exists()]
         if candidates:
-            return [src_dir]
+            return [src_dir, root]
     return [root]
 
 
@@ -135,9 +140,9 @@ def _resolve_import(
 
         if imp.is_star:
             if target in module_to_path:
-                edges.append(ResolvedEdge("", target, EdgeKind.INTERNAL, raw=f"{'.' * imp.level}{imp.module}"))
+                edges.append(ResolvedEdge("", target, EdgeKind.INTERNAL, raw=f"{'.' * imp.level}{imp.module}", type_checking=imp.type_checking))
             else:
-                edges.append(ResolvedEdge("", target, EdgeKind.UNRESOLVED, raw=f"{'.' * imp.level}{imp.module}"))
+                edges.append(ResolvedEdge("", target, EdgeKind.UNRESOLVED, raw=f"{'.' * imp.level}{imp.module}", type_checking=imp.type_checking))
             return edges
 
         if not imp.names:
@@ -147,22 +152,22 @@ def _resolve_import(
         for name in imp.names:
             candidate = f"{target}.{name}" if target else name
             if candidate in module_to_path:
-                edges.append(ResolvedEdge("", candidate, EdgeKind.INTERNAL, raw=candidate))
+                edges.append(ResolvedEdge("", candidate, EdgeKind.INTERNAL, raw=candidate, type_checking=imp.type_checking))
             elif target in module_to_path:
-                edges.append(ResolvedEdge("", target, EdgeKind.INTERNAL, raw=candidate))
+                edges.append(ResolvedEdge("", target, EdgeKind.INTERNAL, raw=candidate, type_checking=imp.type_checking))
             elif candidate in aliases:
-                edges.append(ResolvedEdge("", aliases[candidate], EdgeKind.INTERNAL, raw=candidate))
+                edges.append(ResolvedEdge("", aliases[candidate], EdgeKind.INTERNAL, raw=candidate, type_checking=imp.type_checking))
             else:
-                edges.append(ResolvedEdge("", candidate, EdgeKind.UNRESOLVED, raw=candidate))
+                edges.append(ResolvedEdge("", candidate, EdgeKind.UNRESOLVED, raw=candidate, type_checking=imp.type_checking))
         return edges
 
     if imp.is_star:
         kind, dst = _classify_absolute(imp.module, module_to_path)
-        edges.append(ResolvedEdge("", dst, kind, raw=imp.module))
+        edges.append(ResolvedEdge("", dst, kind, raw=imp.module, type_checking=imp.type_checking))
         return edges
 
     kind, dst = _classify_absolute(imp.module, module_to_path)
-    edges.append(ResolvedEdge("", dst, kind, raw=imp.module))
+    edges.append(ResolvedEdge("", dst, kind, raw=imp.module, type_checking=imp.type_checking))
     return edges
 
 

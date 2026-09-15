@@ -25,7 +25,7 @@ def build_module_graph(result: ResolutionResult) -> nx.MultiDiGraph:
     for edge in result.edges:
         if edge.kind is EdgeKind.INTERNAL:
             if edge.src in g and edge.dst in g:
-                g.add_edge(edge.src, edge.dst, raw=edge.raw)
+                g.add_edge(edge.src, edge.dst, raw=edge.raw, type_checking=edge.type_checking)
         elif edge.kind is EdgeKind.EXTERNAL:
             if edge.src in g:
                 g.nodes[edge.src]["external_deps"].add(edge.dst.split(".")[0])

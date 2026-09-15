@@ -9,7 +9,7 @@ from pathlib import Path
 _GITHUB_URL_RE = re.compile(r"github\.com[:/]([^/]+)/([^/.]+)")
 
 
-def clone_repo(source: str, dest: Path, shallow_since: str = "2.years") -> Path:
+def clone_repo(source: str, dest: Path, shallow_since: str = "1.year") -> Path:
     """Clone `source` (a GitHub URL or a local path) into `dest`.
 
     Uses a blob-filtered, time-shallow clone for remote URLs so a large repo

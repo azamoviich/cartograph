@@ -13,7 +13,12 @@ import networkx as nx
 from cartograph.models import ResolutionResult
 
 
-def build_report(result: ResolutionResult, graph: nx.MultiDiGraph) -> dict:
+def build_report(
+    result: ResolutionResult,
+    graph: nx.MultiDiGraph,
+    clusters: dict[str, str] | None = None,
+    risk: dict | None = None,
+) -> dict:
     nodes = [
         {
             "module": name,
@@ -22,17 +27,22 @@ def build_report(result: ResolutionResult, graph: nx.MultiDiGraph) -> dict:
             "symbols": data["symbols"],
             "external_deps": data["external_deps"],
             "unresolved": data["unresolved"],
+            "cluster": clusters.get(name) if clusters else None,
         }
         for name, data in graph.nodes(data=True)
     ]
     edges = [{"src": src, "dst": dst} for src, dst in graph.edges()]
 
-    return {
+    report = {
         "summary": {
             "file_count": len(result.files),
             "internal_edge_count": graph.number_of_edges(),
             "unresolved_ratio": round(result.unresolved_ratio, 4),
+            "cluster_count": len(set(clusters.values())) if clusters else 0,
         },
         "nodes": nodes,
         "edges": edges,
     }
+    if risk is not None:
+        report["risk"] = risk
+    return report

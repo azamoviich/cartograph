@@ -7,11 +7,13 @@ from pathlib import Path
 
 import click
 
+from cartograph.cluster.hybrid import build_cluster_level_graph, cluster_graph
 from cartograph.graph.build import build_module_graph
 from cartograph.ingest.clone import clone_repo, repo_slug
 from cartograph.report.emit import build_report
 from cartograph.report.html import build_html_report
 from cartograph.resolve.python import resolve_python_repo
+from cartograph.risk.build import build_risk_map
 
 
 @click.group()
@@ -36,7 +38,10 @@ def analyze(source: str, output: Path | None, html_output: Path | None) -> None:
 
         result = resolve_python_repo(repo_root)
         graph = build_module_graph(result)
-        report = build_report(result, graph)
+        assignment = cluster_graph(graph)
+        cluster_level_graph = build_cluster_level_graph(graph, assignment)
+        risk = build_risk_map(graph, cluster_level_graph, repo_root)
+        report = build_report(result, graph, clusters=assignment, risk=risk)
 
         text = json.dumps(report, indent=2)
         if output:
