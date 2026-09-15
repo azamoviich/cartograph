@@ -1,5 +1,6 @@
-"""Regenerate demo/reports/*.json — the pre-generated reports the demo
-site serves so a visitor without an API key sees instant results.
+"""Regenerate docs/reports/*.json — the pre-generated reports the demo
+site (served via GitHub Pages from docs/) reads so a visitor without an
+API key sees instant results.
 
 Run after any resolver/cluster/risk change to keep the demo current:
 
@@ -33,7 +34,7 @@ DEMO_REPOS = [
     ("colinhacks-zod", "https://github.com/colinhacks/zod", resolve_javascript_repo),
 ]
 
-OUTPUT_DIR = REPO_ROOT / "demo" / "reports"
+OUTPUT_DIR = REPO_ROOT / "docs" / "reports"
 
 
 def generate_one(slug: str, url: str, resolver) -> dict:

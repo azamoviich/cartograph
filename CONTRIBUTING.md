@@ -32,7 +32,7 @@ CI runs both on every push and PR (`.github/workflows/ci.yml`), against Python 3
 - `src/cartograph/risk/` — god files, cycles, ownership, test proximity, SDP violations
 - `src/cartograph/narrate/` — grounded LLM narration (BYO API key)
 - `src/cartograph/report/` — JSON + HTML report emission
-- `demo/` — the static demo site; `scripts/generate_demo.py` regenerates its committed reports
+- `docs/` — the static demo site, served via GitHub Pages; `scripts/generate_demo.py` regenerates its committed reports
 
 ## Adding a language
 

@@ -11,7 +11,7 @@ Every developer has opened an unfamiliar codebase and had no idea where to start
 statically analyzes the real import graph — no execution, no LLM guessing at architecture it
 wasn't shown — and turns it into something you can actually explore.
 
-**[Live demo — flask, fastapi, express, zod pre-generated, click and explore →](https://azamoviich.github.io/cartograph/demo/)**
+**[Live demo — flask, fastapi, express, zod pre-generated, click and explore →](https://azamoviich.github.io/cartograph/)**
 
 ## What it actually does
 
