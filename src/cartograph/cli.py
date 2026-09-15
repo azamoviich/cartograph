@@ -10,6 +10,7 @@ import click
 from cartograph.cluster.hybrid import build_cluster_level_graph, cluster_graph
 from cartograph.graph.build import build_module_graph
 from cartograph.ingest.clone import clone_repo, repo_slug
+from cartograph.narrate.cache import DiskCache
 from cartograph.report.emit import build_report
 from cartograph.report.html import build_html_report
 from cartograph.resolve.python import resolve_python_repo
@@ -26,7 +27,19 @@ def main() -> None:
 @click.option("-o", "--output", type=click.Path(path_type=Path), default=None)
 @click.option("--html", "html_output", type=click.Path(path_type=Path), default=None,
               help="Also write a self-contained interactive HTML diagram.")
-def analyze(source: str, output: Path | None, html_output: Path | None) -> None:
+@click.option("--narrate", is_flag=True, default=False,
+              help="Add LLM-written subsystem prose. Requires ANTHROPIC_API_KEY (BYO key).")
+@click.option("--api-key", default=None, help="Anthropic API key, overrides ANTHROPIC_API_KEY.")
+@click.option("--narrate-cache", type=click.Path(path_type=Path), default=Path(".cartograph_cache"),
+              help="Directory for cached narration calls (avoids re-spending on unchanged facts).")
+def analyze(
+    source: str,
+    output: Path | None,
+    html_output: Path | None,
+    narrate: bool,
+    api_key: str | None,
+    narrate_cache: Path,
+) -> None:
     """Analyze a GitHub URL or local path and emit a JSON report."""
     tmp_dir = None
     try:
@@ -42,6 +55,14 @@ def analyze(source: str, output: Path | None, html_output: Path | None) -> None:
         cluster_level_graph = build_cluster_level_graph(graph, assignment)
         risk = build_risk_map(graph, cluster_level_graph, repo_root)
         report = build_report(result, graph, clusters=assignment, risk=risk)
+
+        if narrate:
+            from cartograph.narrate.client import AnthropicNarrationClient
+            from cartograph.narrate.pipeline import narrate_repo
+
+            client = AnthropicNarrationClient(api_key=api_key)
+            cache = DiskCache(narrate_cache)
+            report["narration"] = narrate_repo(graph, assignment, cluster_level_graph, client, cache)
 
         text = json.dumps(report, indent=2)
         if output:

@@ -16,7 +16,9 @@ def build_module_graph(result: ResolutionResult) -> nx.MultiDiGraph:
     g = nx.MultiDiGraph()
 
     for f in result.files:
-        g.add_node(f.module_name, path=f.path, loc=f.loc, symbols=list(f.symbols))
+        g.add_node(
+            f.module_name, path=f.path, loc=f.loc, symbols=list(f.symbols), docstring=f.docstring
+        )
 
     for f in result.files:
         g.nodes[f.module_name].setdefault("external_deps", set())

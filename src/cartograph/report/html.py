@@ -53,6 +53,9 @@ _TEMPLATE = """<!doctype html>
   }}
   #header h1 {{ font-size: 15px; margin: 0 0 4px; }}
   #header p {{ margin: 0; color: var(--muted); font-size: 12px; }}
+  #overview {{ margin-top: 8px; font-size: 12px; max-width: 440px; }}
+  #overview p {{ margin: 0 0 6px; color: var(--text); }}
+  .confidence {{ font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); }}
   .node circle {{ stroke: var(--panel); stroke-width: 1.5px; cursor: pointer; }}
   .node text {{ font-size: 9px; fill: var(--muted); pointer-events: none; }}
   .link {{ stroke: var(--edge); stroke-opacity: 0.6; }}
@@ -75,6 +78,7 @@ _TEMPLATE = """<!doctype html>
     <div id="header">
       <h1>{title}</h1>
       <p>{file_count} files &middot; {edge_count} internal imports &middot; {unresolved_pct} unresolved</p>
+      <div id="overview"></div>
     </div>
     <svg></svg>
   </div>
@@ -174,9 +178,29 @@ _TEMPLATE = """<!doctype html>
       if (!list || !list.length) return '<div class="empty">none</div>';
       return list.map(function(x) {{ return '<span class="chip">' + escapeHtml(x) + '</span>'; }}).join('');
     }}
+
+    var narrationHtml = '';
+    var clusterNarration = report.narration && report.narration.clusters
+      ? report.narration.clusters[n.cluster] : null;
+    if (clusterNarration) {{
+      function deps(list) {{
+        if (!list || !list.length) return '<div class="empty">none</div>';
+        return '<ul style="padding-left:16px;margin:0;">' + list.map(function(d) {{
+          return '<li>' + escapeHtml(d.target_cluster) + ' &mdash; ' + escapeHtml(d.reason) + '</li>';
+        }}).join('') + '</ul>';
+      }}
+      narrationHtml =
+        '<div class="section"><h3>Subsystem role <span class="confidence">(' + escapeHtml(clusterNarration.confidence) + ' confidence)</span></h3>' +
+        '<p>' + escapeHtml(clusterNarration.role) + '</p></div>' +
+        '<div class="section"><h3>Depends on</h3>' + deps(clusterNarration.depends_on) + '</div>' +
+        '<div class="section"><h3>Provides to</h3>' + deps(clusterNarration.provides_to) + '</div>';
+    }}
+
     el.innerHTML =
       '<h2>' + escapeHtml(n.module) + '</h2>' +
       '<div class="path">' + escapeHtml(n.path) + '</div>' +
+      (n.cluster ? '<div class="path">cluster: ' + escapeHtml(n.cluster) + '</div>' : '') +
+      narrationHtml +
       '<div class="section"><h3>Symbols (' + n.symbols.length + ')</h3>' + chips(n.symbols) + '</div>' +
       '<div class="section"><h3>External deps</h3>' + chips(n.external_deps) + '</div>' +
       '<div class="section"><h3>Unresolved imports</h3>' + chips(n.unresolved) + '</div>' +
@@ -221,6 +245,21 @@ _TEMPLATE = """<!doctype html>
     }});
   }}
   renderRiskPanel();
+
+  function renderOverview() {{
+    var overview = report.narration && report.narration.overview;
+    var el = document.getElementById('overview');
+    if (!overview) {{ el.innerHTML = ''; return; }}
+    el.innerHTML =
+      '<p>' + escapeHtml(overview.summary) + '</p>' +
+      (overview.key_subsystems && overview.key_subsystems.length
+        ? '<p><strong>Key subsystems:</strong> ' + overview.key_subsystems.map(escapeHtml).join(', ') + '</p>'
+        : '') +
+      (overview.notable_risks && overview.notable_risks.length
+        ? '<p><strong>Notable risks:</strong> ' + overview.notable_risks.map(escapeHtml).join('; ') + '</p>'
+        : '');
+  }}
+  renderOverview();
 
   document.getElementById('search').addEventListener('input', function(ev) {{
     var q = ev.target.value.trim().toLowerCase();
