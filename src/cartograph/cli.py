@@ -10,6 +10,7 @@ import click
 from cartograph.graph.build import build_module_graph
 from cartograph.ingest.clone import clone_repo, repo_slug
 from cartograph.report.emit import build_report
+from cartograph.report.html import build_html_report
 from cartograph.resolve.python import resolve_python_repo
 
 
@@ -21,7 +22,9 @@ def main() -> None:
 @main.command()
 @click.argument("source")
 @click.option("-o", "--output", type=click.Path(path_type=Path), default=None)
-def analyze(source: str, output: Path | None) -> None:
+@click.option("--html", "html_output", type=click.Path(path_type=Path), default=None,
+              help="Also write a self-contained interactive HTML diagram.")
+def analyze(source: str, output: Path | None, html_output: Path | None) -> None:
     """Analyze a GitHub URL or local path and emit a JSON report."""
     tmp_dir = None
     try:
@@ -41,6 +44,10 @@ def analyze(source: str, output: Path | None) -> None:
             click.echo(f"Wrote report to {output}")
         else:
             click.echo(text)
+
+        if html_output:
+            html_output.write_text(build_html_report(report, title=repo_slug(source)))
+            click.echo(f"Wrote HTML diagram to {html_output}")
 
         click.echo(
             f"files={report['summary']['file_count']} "

@@ -1,0 +1,220 @@
+"""Milestone-2 output: a self-contained, static force-directed HTML diagram.
+
+No clustering and no LLM yet — nodes are colored by top-level directory
+(a free proxy for subsystem before real clustering lands in milestone 3)
+and edges are the resolved internal import graph from milestone 1.
+Clicking a node highlights its neighbors and shows its facts (path, LOC,
+symbols, external deps, unresolved imports) in a side panel.
+"""
+
+from __future__ import annotations
+
+import json
+
+_TEMPLATE = """<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{title}</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+  :root {{
+    --bg: #fafaf9; --panel: #ffffff; --text: #1c1c1c; --muted: #6b6b6b;
+    --border: #e2e2e0; --accent: #2563eb; --edge: #c7c7c5;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }}
+  @media (prefers-color-scheme: dark) {{
+    :root:not([data-theme="light"]) {{
+      --bg: #14140f; --panel: #1c1c17; --text: #ececec; --muted: #9a9a94;
+      --border: #333; --accent: #60a5fa; --edge: #3a3a35;
+    }}
+  }}
+  :root[data-theme="dark"] {{
+    --bg: #14140f; --panel: #1c1c17; --text: #ececec; --muted: #9a9a94;
+    --border: #333; --accent: #60a5fa; --edge: #3a3a35;
+  }}
+  * {{ box-sizing: border-box; }}
+  body {{ margin: 0; background: var(--bg); color: var(--text); font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
+  img {{ max-width: 100%; }}
+  [hidden] {{ display: none !important; }}
+  #app {{ display: flex; height: 100vh; width: 100vw; }}
+  #graph-wrap {{ flex: 1; min-width: 0; position: relative; }}
+  svg {{ width: 100%; height: 100%; display: block; }}
+  #sidebar {{
+    width: 320px; max-width: 45vw; border-left: 1px solid var(--border);
+    background: var(--panel); padding: 16px; overflow-y: auto; flex-shrink: 0;
+  }}
+  #header {{
+    position: absolute; top: 12px; left: 12px; background: var(--panel);
+    border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px;
+    max-width: min(60vw, 480px);
+  }}
+  #header h1 {{ font-size: 15px; margin: 0 0 4px; }}
+  #header p {{ margin: 0; color: var(--muted); font-size: 12px; }}
+  .node circle {{ stroke: var(--panel); stroke-width: 1.5px; cursor: pointer; }}
+  .node text {{ font-size: 9px; fill: var(--muted); pointer-events: none; }}
+  .link {{ stroke: var(--edge); stroke-opacity: 0.6; }}
+  .link.dim {{ stroke-opacity: 0.08; }}
+  .node.dim circle {{ opacity: 0.15; }}
+  .node.dim text {{ opacity: 0.15; }}
+  h2 {{ font-size: 14px; margin: 0 0 4px; word-break: break-word; }}
+  .path {{ color: var(--muted); font-size: 11px; margin-bottom: 12px; word-break: break-all; }}
+  .section {{ margin-bottom: 14px; }}
+  .section h3 {{ font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 6px; }}
+  .chip {{ display: inline-block; background: var(--bg); border: 1px solid var(--border); border-radius: 5px; padding: 2px 6px; margin: 0 4px 4px 0; font-size: 11px; }}
+  .empty {{ color: var(--muted); font-size: 12px; }}
+  .placeholder {{ color: var(--muted); padding-top: 40px; text-align: center; }}
+  #search {{ width: 100%; padding: 6px 8px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; }}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="graph-wrap">
+    <div id="header">
+      <h1>{title}</h1>
+      <p>{file_count} files &middot; {edge_count} internal imports &middot; {unresolved_pct} unresolved</p>
+    </div>
+    <svg></svg>
+  </div>
+  <div id="sidebar">
+    <input id="search" type="text" placeholder="Filter modules...">
+    <div id="detail"><div class="placeholder">Click a node to inspect it</div></div>
+  </div>
+</div>
+<script id="report-data" type="application/json">{data_json}</script>
+<script>
+(function() {{
+  var report = JSON.parse(document.getElementById('report-data').textContent);
+  var nodesById = {{}};
+  report.nodes.forEach(function(n) {{ nodesById[n.module] = n; }});
+
+  function topDir(path) {{
+    var parts = path.split('/').filter(Boolean);
+    return parts.length > 1 ? parts[0] : '(root)';
+  }}
+
+  var dirs = Array.from(new Set(report.nodes.map(function(n) {{ return topDir(n.path); }})));
+  var color = d3.scaleOrdinal(d3.schemeTableau10).domain(dirs);
+
+  var nodes = report.nodes.map(function(n) {{
+    return {{ id: n.module, path: n.path, loc: n.loc, symbols: n.symbols,
+              external_deps: n.external_deps, unresolved: n.unresolved,
+              dir: topDir(n.path) }};
+  }});
+  var links = report.edges.map(function(e) {{ return {{ source: e.src, target: e.dst }}; }});
+
+  var indegree = {{}};
+  links.forEach(function(l) {{ indegree[l.target] = (indegree[l.target] || 0) + 1; }});
+
+  var svg = d3.select('svg');
+  var g = svg.append('g');
+  svg.call(d3.zoom().scaleExtent([0.1, 6]).on('zoom', function(ev) {{ g.attr('transform', ev.transform); }}));
+
+  var width = window.innerWidth, height = window.innerHeight;
+
+  var sim = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(links).id(function(d) {{ return d.id; }}).distance(60).strength(0.3))
+    .force('charge', d3.forceManyBody().strength(-120))
+    .force('center', d3.forceCenter(width / 2, height / 2))
+    .force('collide', d3.forceCollide(function(d) {{ return radius(d) + 3; }}));
+
+  function radius(d) {{ return 4 + Math.min(10, Math.sqrt(indegree[d.id] || 0) * 3); }}
+
+  var link = g.append('g').selectAll('line')
+    .data(links).join('line').attr('class', 'link');
+
+  var node = g.append('g').selectAll('g')
+    .data(nodes).join('g').attr('class', 'node')
+    .call(d3.drag()
+      .on('start', function(ev, d) {{ if (!ev.active) sim.alphaTarget(0.2).restart(); d.fx = d.x; d.fy = d.y; }})
+      .on('drag', function(ev, d) {{ d.fx = ev.x; d.fy = ev.y; }})
+      .on('end', function(ev, d) {{ if (!ev.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }}));
+
+  node.append('circle')
+    .attr('r', radius)
+    .attr('fill', function(d) {{ return color(d.dir); }})
+    .on('click', function(ev, d) {{ selectNode(d.id); }});
+
+  node.append('text')
+    .attr('dx', function(d) {{ return radius(d) + 3; }})
+    .attr('dy', '0.32em')
+    .text(function(d) {{ return d.id.split('.').pop(); }});
+
+  sim.on('tick', function() {{
+    link.attr('x1', function(d) {{ return d.source.x; }}).attr('y1', function(d) {{ return d.source.y; }})
+        .attr('x2', function(d) {{ return d.target.x; }}).attr('y2', function(d) {{ return d.target.y; }});
+    node.attr('transform', function(d) {{ return 'translate(' + d.x + ',' + d.y + ')'; }});
+  }});
+
+  var adjacency = {{}};
+  links.forEach(function(l) {{
+    var s = l.source.id || l.source, t = l.target.id || l.target;
+    (adjacency[s] = adjacency[s] || new Set()).add(t);
+    (adjacency[t] = adjacency[t] || new Set()).add(s);
+  }});
+
+  function selectNode(id) {{
+    var neighbors = adjacency[id] || new Set();
+    node.classed('dim', function(d) {{ return d.id !== id && !neighbors.has(d.id); }});
+    link.classed('dim', function(d) {{
+      var s = d.source.id || d.source, t = d.target.id || d.target;
+      return s !== id && t !== id;
+    }});
+    renderDetail(nodesById[id]);
+  }}
+
+  function renderDetail(n) {{
+    var el = document.getElementById('detail');
+    if (!n) {{ el.innerHTML = '<div class="placeholder">Click a node to inspect it</div>'; return; }}
+    function chips(list) {{
+      if (!list || !list.length) return '<div class="empty">none</div>';
+      return list.map(function(x) {{ return '<span class="chip">' + escapeHtml(x) + '</span>'; }}).join('');
+    }}
+    el.innerHTML =
+      '<h2>' + escapeHtml(n.module) + '</h2>' +
+      '<div class="path">' + escapeHtml(n.path) + '</div>' +
+      '<div class="section"><h3>Symbols (' + n.symbols.length + ')</h3>' + chips(n.symbols) + '</div>' +
+      '<div class="section"><h3>External deps</h3>' + chips(n.external_deps) + '</div>' +
+      '<div class="section"><h3>Unresolved imports</h3>' + chips(n.unresolved) + '</div>' +
+      '<div class="section"><h3>Lines of code</h3>' + n.loc + '</div>';
+  }}
+
+  function escapeHtml(s) {{
+    return String(s).replace(/[&<>"']/g, function(c) {{
+      return {{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[c];
+    }});
+  }}
+
+  document.getElementById('search').addEventListener('input', function(ev) {{
+    var q = ev.target.value.trim().toLowerCase();
+    if (!q) {{ node.classed('dim', false); link.classed('dim', false); return; }}
+    node.classed('dim', function(d) {{ return d.id.toLowerCase().indexOf(q) === -1; }});
+    link.classed('dim', true);
+  }});
+
+  window.addEventListener('resize', function() {{
+    sim.force('center', d3.forceCenter(window.innerWidth / 2, window.innerHeight / 2));
+    sim.alpha(0.3).restart();
+  }});
+}})();
+</script>
+</body>
+</html>
+"""
+
+
+def build_html_report(report: dict, title: str = "Cartograph") -> str:
+    summary = report["summary"]
+    unresolved_pct = f"{summary['unresolved_ratio']:.1%}"
+    # Prevent a path/symbol string containing "</script>" from breaking out
+    # of the embedded JSON script tag.
+    data_json = json.dumps(report).replace("</", "<\\/")
+    return _TEMPLATE.format(
+        title=title,
+        file_count=summary["file_count"],
+        edge_count=summary["internal_edge_count"],
+        unresolved_pct=unresolved_pct,
+        data_json=data_json,
+    )
