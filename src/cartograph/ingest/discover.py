@@ -39,9 +39,7 @@ def _is_ignored(path: Path, root: Path, ignore_dirs: set[str], ignore_globs: set
     rel_parts = path.relative_to(root).parts
     if any(part in ignore_dirs for part in rel_parts):
         return True
-    if any(fnmatch.fnmatch(path.name, pattern) for pattern in ignore_globs):
-        return True
-    return False
+    return any(fnmatch.fnmatch(path.name, pattern) for pattern in ignore_globs)
 
 
 def discover_python_files(

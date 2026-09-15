@@ -80,9 +80,7 @@ def _parse_import_from_statement(
             name_node = child.child_by_field_name("name")
             if name_node is not None:
                 names.append(_text(name_node, source))
-        elif child.type == "dotted_name" and child != module_node:
-            names.append(_text(child, source))
-        elif child.type == "identifier" and child != module_node:
+        elif child.type == "dotted_name" and child != module_node or child.type == "identifier" and child != module_node:
             names.append(_text(child, source))
 
     if level == 0 and not module_parts:

@@ -15,12 +15,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import tree_sitter_javascript as tsjs
+import tree_sitter_typescript as tsts
 from tree_sitter import Language, Parser
 
 from cartograph.models import ParsedFile, RawImport
-
-import tree_sitter_javascript as tsjs
-import tree_sitter_typescript as tsts
 
 _JS_LANGUAGE = Language(tsjs.language())
 _TS_LANGUAGE = Language(tsts.language_typescript())

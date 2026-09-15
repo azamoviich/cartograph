@@ -8,7 +8,6 @@ that the disk cache actually avoids a second "API" call.
 from __future__ import annotations
 
 import networkx as nx
-import pytest
 
 from cartograph.narrate.cache import DiskCache
 from cartograph.narrate.citations import enforce_cluster_citations, enforce_overview_citations

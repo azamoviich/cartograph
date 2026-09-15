@@ -19,12 +19,6 @@ dependencies = [
     "json5>=0.15.0",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-    "ruff>=0.6",
-]
-
 [project.scripts]
 cartograph = "cartograph.cli:main"
 
@@ -37,8 +31,10 @@ packages = ["src/cartograph"]
 
 [tool.ruff]
 line-length = 100
+extend-exclude = ["tests/fixtures", "tests/fixtures_js", "tests/fixtures_src_layout"]
 
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "ruff>=0.6",
 ]

@@ -64,15 +64,10 @@ dependencies = [
     { name = "tree-sitter-typescript" },
 ]
 
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "ruff" },
-]
-
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
+    { name = "ruff" },
 ]
 
 [package.metadata]
@@ -83,18 +78,18 @@ requires-dist = [
     { name = "leidenalg", specifier = ">=0.10" },
     { name = "networkx", specifier = ">=3.3" },
     { name = "pydantic", specifier = ">=2.9" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "python-igraph", specifier = ">=0.11" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
     { name = "tree-sitter", specifier = ">=0.23" },
     { name = "tree-sitter-javascript", specifier = ">=0.23" },
     { name = "tree-sitter-python", specifier = ">=0.23" },
     { name = "tree-sitter-typescript", specifier = ">=0.23" },
 ]
-provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=9.1.1" }]
+dev = [
+    { name = "pytest", specifier = ">=9.1.1" },
+    { name = "ruff", specifier = ">=0.6" },
+]
 
 [[package]]
 name = "click"

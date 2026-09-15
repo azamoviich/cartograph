@@ -18,7 +18,7 @@ from pathlib import Path
 import json5
 
 from cartograph.ingest.discover import discover_js_files
-from cartograph.models import EdgeKind, ParsedFile, RawImport, ResolutionResult, ResolvedEdge
+from cartograph.models import EdgeKind, ResolutionResult, ResolvedEdge
 from cartograph.parse.javascript import parse_javascript_file
 
 _EXTENSION_ORDER = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")
