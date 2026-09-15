@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/logo.jpg" alt="Cartograph logo" width="160">
+</p>
+
 # Cartograph
 
 [![CI](https://github.com/azamoviich/cartograph/actions/workflows/ci.yml/badge.svg)](https://github.com/azamoviich/cartograph/actions/workflows/ci.yml)
